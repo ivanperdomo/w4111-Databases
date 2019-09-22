@@ -6,9 +6,11 @@ import logging
 import json
 import os
 import pandas as pd
+from collections import OrderedDict
 
 pd.set_option("display.width", 256)
 pd.set_option('display.max_columns', 20)
+
 
 class CSVDataTable(BaseDataTable):
     """
@@ -94,7 +96,6 @@ class CSVDataTable(BaseDataTable):
 
     @staticmethod
     def matches_template(row, template):
-
         result = True
         if template is not None:
             for k, v in template.items():
@@ -104,19 +105,49 @@ class CSVDataTable(BaseDataTable):
 
         return result
 
+    # Takes an OrderedDict and a list of fields as input, returns all matching fields as its own OrderedDict
+    def get_fields_from_row(self, row_idx, fields):
+        output = OrderedDict()
+        dict_row = self._rows[row_idx]
+        for field in fields:
+            if field in dict_row:
+                output[field] = dict_row[field]
+            else:
+                raise ValueError('Invalid field specified.')
+        return output
+
+    def find_record_with_keys(self, key_fields):
+        for idx, row in enumerate(self._rows):  # Find record of interest by searching each row in the database
+            match = True
+            for primary_key, lookup_key in zip(self._data['key_columns'], key_fields):
+                if row[primary_key] != lookup_key:
+                    match = False
+            if match:
+                return idx
+        return False
+
+    def find_record_with_template(self, template):
+        matches_idx = list()
+        for idx, row in enumerate(self._rows):
+            if self.matches_template(row, template):
+                matches_idx.append(idx)
+        return matches_idx
+
     def find_by_primary_key(self, key_fields, field_list=None):
         """
-
         :param key_fields: The list with the values for the key_columns, in order, to use to find a record.
+        These are all the primary keys we need to match per record
         :param field_list: A subset of the fields of the record to return.
+        This is what we want to extract per lookup
         :return: None, or a dictionary containing the requested fields for the record identified
             by the key.
         """
-        pass
+        record_idx = self.find_record_with_keys(key_fields)
+
+        return self.get_fields_from_row(record_idx, field_list) if record_idx else None
 
     def find_by_template(self, template, field_list=None, limit=None, offset=None, order_by=None):
         """
-
         :param template: A dictionary of the form { "field1" : value1, "field2": value2, ...}
         :param field_list: A list of request fields of the form, ['fielda', 'fieldb', ...]
         :param limit: Do not worry about this for now.
@@ -125,17 +156,21 @@ class CSVDataTable(BaseDataTable):
         :return: A list containing dictionaries. A dictionary is in the list representing each record
             that matches the template. The dictionary only contains the requested fields.
         """
-        pass
+        output = list()
+        matches_idx = self.find_record_with_template(template)
+        for record_idx in matches_idx:
+            output.append(self.get_fields_from_row(record_idx, field_list))
+        return output if output else None
 
     def delete_by_key(self, key_fields):
         """
-
         Deletes the record that matches the key.
-
-        :param template: A template.
         :return: A count of the rows deleted.
         """
-        pass
+        record_idx = self.find_record_with_keys(key_fields)
+        if record_idx:
+            del self._rows[record_idx]
+        return 1 if record_idx else 0
 
     def delete_by_template(self, template):
         """
@@ -143,15 +178,22 @@ class CSVDataTable(BaseDataTable):
         :param template: Template to determine rows to delete.
         :return: Number of rows deleted.
         """
-        pass
+        matches_idx = self.find_record_with_template(template)
+        for record_idx in matches_idx:
+            del self._rows[record_idx]
+        return len(matches_idx)
 
     def update_by_key(self, key_fields, new_values):
         """
-
         :param key_fields: List of value for the key fields.
         :param new_values: A dict of field:value to set for updated row.
         :return: Number of rows updated.
         """
+        record_idx = self.find_record_with_keys(key_fields)
+        if record_idx:
+            for k, v in new_values.items():
+                self._data[record_idx][k] = v
+        return 1 if record_idx else 0
 
     def update_by_template(self, template, new_values):
         """
@@ -160,15 +202,18 @@ class CSVDataTable(BaseDataTable):
         :param new_values: New values to set for matching fields.
         :return: Number of rows updated.
         """
-        pass
+        matches_idx = self.find_record_with_template(template)
+        for record_idx in matches_idx:
+            for k, v in new_values.items():
+                self._data[record_idx][k] = v
+        return len(matches_idx)
 
     def insert(self, new_record):
         """
-
         :param new_record: A dictionary representing a row to add to the set of records.
         :return: None
         """
-        pass
+        for primary_key in self._data['key_columns']
 
     def get_rows(self):
         return self._rows
